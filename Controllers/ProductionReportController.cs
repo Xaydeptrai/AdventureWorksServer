@@ -55,7 +55,7 @@ namespace AdventureWorksServer.Controllers
         public IActionResult GetProductsCompletedByYear()
         {
             var completedProducts = _context.WorkOrders
-                .Where(wo => wo.EndDate != null) // Chỉ lấy các WorkOrder đã hoàn thành
+                .Where(wo => wo.EndDate != null)
                 .GroupBy(wo => wo.EndDate.Value.Year)
                 .Select(group => new
                 {
@@ -87,35 +87,45 @@ namespace AdventureWorksServer.Controllers
         }
 
         [HttpGet("defective-products-rate")]
-        public IActionResult GetDefectiveProductsRate()
+        public IActionResult GetDefectiveProductsRate([FromQuery] int? year)
         {
-            var defectiveRate = _context.WorkOrders
-                .GroupBy(wo => wo.ScrapReasonId != null)
+            var defectiveRateQuery = _context.WorkOrders
+                .Where(wo => !year.HasValue || wo.StartDate.Year == year.Value) // Lọc theo năm nếu có
+                .GroupBy(wo => new
+                {
+                    Year = wo.StartDate.Year,
+                    IsDefective = wo.ScrapReasonId != null
+                })
                 .Select(group => new
                 {
-                    IsDefective = group.Key,
+                    Year = group.Key.Year,
+                    IsDefective = group.Key.IsDefective,
                     TotalProducts = group.Sum(wo => wo.OrderQty)
+                });
+
+            var defectiveRateByYear = defectiveRateQuery.ToList();
+
+            var defectiveRateSummary = defectiveRateByYear
+                .GroupBy(r => r.Year)
+                .Select(group => new
+                {
+                    Year = group.Key,
+                    TotalProducts = group.Sum(r => r.TotalProducts),
+                    DefectiveProducts = group.FirstOrDefault(r => r.IsDefective)?.TotalProducts ?? 0,
+                    DefectiveRatePercentage = (group.FirstOrDefault(r => r.IsDefective)?.TotalProducts ?? 0) /
+                                               (double)group.Sum(r => r.TotalProducts) * 100
                 })
                 .ToList();
 
-            var totalProducts = defectiveRate.Sum(r => r.TotalProducts);
-            var defectives = defectiveRate.FirstOrDefault(r => r.IsDefective)?.TotalProducts ?? 0;
-
-            return Ok(new
-            {
-                TotalProducts = totalProducts,
-                DefectiveProducts = defectives,
-                DefectiveRatePercentage = (defectives / (double)totalProducts) * 100
-            });
+            return Ok(defectiveRateSummary);
         }
+
 
         [HttpGet("top-10-products-produced")]
         public IActionResult GetTop10ProductsProduced(int? year = null)
         {
-            // Đo thời gian thực thi
             var stopwatch = Stopwatch.StartNew();
 
-            // Query cơ bản với điều kiện lọc nếu có năm
             var query = _context.WorkOrders
                 .Join(_context.Products,
                       wo => wo.ProductId,
@@ -127,7 +137,6 @@ namespace AdventureWorksServer.Controllers
                 query = query.Where(joined => joined.wo.DueDate.Year == year.Value);
             }
 
-            // Thống kê top 10 sản phẩm được sản xuất nhiều nhất
             var topProducts = query
                 .GroupBy(joined => new { joined.p.Name, joined.p.ProductNumber })
                 .Select(group => new
@@ -140,10 +149,8 @@ namespace AdventureWorksServer.Controllers
                 .Take(10)
                 .ToList();
 
-            // Dừng stopwatch
             stopwatch.Stop();
 
-            // Trả về kết quả kèm thời gian thực thi
             return Ok(new
             {
                 Year = year.HasValue ? year.Value.ToString() : "All Years",

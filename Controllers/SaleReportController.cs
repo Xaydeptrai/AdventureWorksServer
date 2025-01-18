@@ -123,10 +123,8 @@ namespace AdventureWorksServer.Controllers
         [HttpGet("yearly-sales-by-city-and-category")]
         public IActionResult GetYearlySalesByCityAndCategory(int? year)
         {
-            // Đo thời gian thực thi
             var stopwatch = Stopwatch.StartNew();
 
-            // Lấy doanh thu của cả năm theo thành phố và danh mục sản phẩm
             var result = _context.SalesOrderDetails
                 .Join(_context.SalesOrderHeaders,
                       sod => sod.SalesOrderId,
@@ -162,7 +160,6 @@ namespace AdventureWorksServer.Controllers
                 })
                 .ToList();
 
-            // Lọc ra 10 thành phố có doanh thu cao nhất
             var topCities = result
                 .GroupBy(r => r.City)
                 .Select(group => new
@@ -175,17 +172,14 @@ namespace AdventureWorksServer.Controllers
                 .Select(r => r.City)
                 .ToList();
 
-            // Lọc lại kết quả chỉ chứa 10 thành phố có doanh thu cao nhất
             var filteredResult = result
                 .Where(r => topCities.Contains(r.City))
                 .OrderBy(r => r.City)
                 .ThenBy(r => r.Category)
                 .ToList();
 
-            // Dừng Stopwatch
             stopwatch.Stop();
 
-            // Trả về kết quả kèm thời gian thực thi
             return Ok(new
             {
                 Year = year,
